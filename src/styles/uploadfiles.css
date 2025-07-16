@@ -1,0 +1,98 @@
+.upload-page {
+  padding: 30px;
+}
+
+.upload-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.upload-subtext {
+  font-size: 15px;
+  color: #555;
+  margin-bottom: 30px;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.file-card {
+  background: #fff;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.file-card h4 {
+  margin-bottom: 20px;
+}
+
+.file-pair {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.file-box {
+  flex: 1;
+  min-width: 240px;
+}
+
+.file-drop {
+  border: 2px dashed #cdd6e0;
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+  background-color: #fafafa;
+  margin-top: 10px;
+}
+
+.file-button {
+  display: inline-block;
+  margin-top: 10px;
+  background-color: #1a73e8;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #777;
+  margin-top: 8px;
+}
+
+.file-name {
+  font-size: 13px;
+  margin-top: 6px;
+  color: #333;
+  font-style: italic;
+}
+
+.upload-btn {
+  background-color: #1a73e8;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 16px;
+  border: none;
+  margin-top: 20px;
+  cursor: pointer;
+}
+
+.upload-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.user-tag {
+  margin-top: 30px;
+  font-size: 14px;
+  color: #444;
+}
