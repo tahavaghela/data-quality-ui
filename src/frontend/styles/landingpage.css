@@ -1,3 +1,4 @@
+/* Base styles */
 body {
   margin: 0;
   padding: 0;
@@ -5,16 +6,18 @@ body {
   background-color: #f4f7fb;
 }
 
+/* Container */
 .landing-container {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
+/* Navbar */
 .landing-navbar {
   background-color: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
-  position: sticky; /* Makes it stick to top on scroll */
+  position: sticky;
   top: 0;
   z-index: 1000;
   display: flex;
@@ -32,17 +35,17 @@ body {
   letter-spacing: -1px;
   transition: 0.3s;
 }
+
 .landing-logo span {
   color: #222;
 }
 
 .landing-nav {
   display: flex;
-  gap: 36px; /* Increased spacing between tabs */
+  gap: 36px;
 }
 
 .landing-nav a {
-  margin-left: 24px;
   text-decoration: none;
   color: #444;
   font-size: 1.05rem;
@@ -51,6 +54,7 @@ body {
   padding-bottom: 4px;
   transition: color 0.3s ease;
 }
+
 .landing-nav a::after {
   content: '';
   position: absolute;
@@ -61,6 +65,7 @@ body {
   background-color: #007bff;
   transition: width 0.3s ease;
 }
+
 .landing-nav a:hover::after {
   width: 100%;
 }
@@ -68,10 +73,8 @@ body {
 .landing-nav a:hover {
   color: #007bff;
 }
-.landing-nav a:hover {
-  color: #007bff;
-}
 
+/* Hero Section */
 .landing-hero {
   flex-grow: 1;
   text-align: center;
@@ -92,6 +95,7 @@ body {
   background-color: rgba(0, 0, 0, 0.5);
   z-index: -1;
 }
+
 .landing-hero h1 {
   font-size: 2.8rem;
   color: #fff;
@@ -99,7 +103,6 @@ body {
   position: relative;
   z-index: 2;
 }
-
 
 .landing-hero p {
   font-size: 1.1rem;
@@ -110,9 +113,11 @@ body {
   z-index: 2;
 }
 
+/* Buttons */
 .landing-buttons {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 20px;
   position: relative;
   z-index: 2;
@@ -125,8 +130,9 @@ body {
   border: none;
   border-radius: 6px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: 0.3s;
+  transition: background-color 0.3s ease;
 }
 
 .primary-btn:hover {
@@ -140,10 +146,35 @@ body {
   padding: 12px 26px;
   border-radius: 6px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: 0.3s;
+  transition: background-color 0.3s ease;
 }
 
 .secondary-btn:hover {
   background-color: #e6f0ff;
+}
+
+/* Responsive Adjustments */
+@media screen and (max-width: 768px) {
+  .landing-navbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .landing-nav {
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .landing-hero h1 {
+    font-size: 2.2rem;
+  }
+
+  .landing-hero p {
+    font-size: 1rem;
+    padding: 0 10px;
+  }
 }

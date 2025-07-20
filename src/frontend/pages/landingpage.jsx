@@ -1,9 +1,9 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import '../styles/landingpage.css';
+import { useKindeAuth } from '@kinde-oss/kinde-auth-react';
 
 const LandingPage = () => {
-  const navigate = useNavigate();
+  const { login, register } = useKindeAuth();
 
   return (
     <div className="landing-container">
@@ -24,13 +24,8 @@ const LandingPage = () => {
           all your sources.
         </p>
         <div className="landing-buttons">
-          <button
-            className="primary-btn"
-            onClick={() => navigate('/dashboard')}
-          >
-            Get Started Today
-          </button>
-          <button className="secondary-btn">Learn More</button>
+          <button className="primary-btn" onClick={() => login()}>Login</button>
+          <button className="secondary-btn" onClick={() => register()}>Register</button>
         </div>
       </section>
     </div>

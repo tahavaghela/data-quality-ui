@@ -1,6 +1,6 @@
-
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import {  Routes, Route } from 'react-router-dom';
+import { Callback } from '@kinde-oss/kinde-auth-react';
 import Dashboard from './pages/dashboard';
 import UploadFiles from './pages/uploadfiles';
 import Reports from './pages/reports';
@@ -11,13 +11,11 @@ import DetailedOverview from './pages/DetailedOverview';
 import DataProfile from './pages/DataProfile';
 import FailedCheck from './pages/failedchecks';
 
-
-
 function App() {
   return (
-    <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/callback" element={<Callback />} /> 
         <Route path="/dashboard" element={<Layout title="Dashboard"><Dashboard /></Layout>} />
         <Route path="/upload-files" element={<Layout title="Upload Files"><UploadFiles /></Layout>} />
         <Route path="/reports" element={<Layout title="Reports"><Reports /></Layout>} />
@@ -26,7 +24,6 @@ function App() {
         <Route path="/detailed-overview" element={<Layout title="Detailed Overview"><DetailedOverview /></Layout>} />
         <Route path="/upload-history" element={<Layout title="Upload History"><UploadHistory /></Layout>} />
       </Routes>
-    </Router>
   );
 }
 
