@@ -1,0 +1,151 @@
+.sidebar {
+  width: 240px;
+  background: #f9fafc;
+  padding: 24px;
+  border-right: 1px solid #e0e0e0;
+  min-height: 100vh;
+  transition: width 0.3s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1rem; /* Increased font size */
+}
+
+/* Collapsed mode */
+.sidebar.collapsed {
+  width: 60px;
+}
+
+/* Header */
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Toggle button */
+.toggle-btn {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: #555;
+  cursor: pointer;
+}
+
+/* Sidebar title */
+.sidebar h2 {
+  font-size: 1.4rem;
+  color: #0d6efd;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Navigation */
+.sidebar nav {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.sidebar.collapsed nav a {
+  justify-content: center;
+  padding: 12px;
+}
+
+.sidebar nav a i {
+  font-size: 1.2rem;
+  transition: color 0.2s ease;
+}
+
+.sidebar nav a:hover {
+  background: #e9f2ff;
+  color: #0d6efd;
+}
+
+.sidebar nav a:hover i {
+  color: #0d6efd;
+}
+
+.sidebar nav a.active {
+  background: #0d6efd;
+  color: #fff;
+  font-weight: 600;
+}
+
+.sidebar nav a.active i {
+  color: #fff;
+}
+
+/* Footer: Dark mode toggle */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  padding-bottom: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dark-toggle {
+  background: none;
+  border: none;
+  color: #333;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.sidebar.collapsed .dark-toggle {
+  justify-content: center;
+}
+
+/* DARK MODE STYLES */
+.sidebar.dark {
+  background: #1e1e2f;
+  color: #eee;
+}
+
+.sidebar.dark nav a {
+  color: #ccc;
+}
+
+.sidebar.dark nav a.active {
+  background-color: #007bff;
+  color: #fff;
+}
+
+.sidebar.dark nav a:hover {
+  background: #2a2a3a;
+  color: #0d6efd;
+}
+
+.sidebar.dark .dark-toggle {
+  color: #ddd;
+}
+.sidebar,
+.sidebar nav a,
+.sidebar .dark-toggle {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
