@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+python-jose[cryptography]
+requests
+sqlalchemy
+psycopg2-binary
+bcrypt
+google-cloud-storage
+google-auth
+itsdangerous
+google-cloud-pubsub
+sqlalchemy-cockroachdb
+python-multipart
