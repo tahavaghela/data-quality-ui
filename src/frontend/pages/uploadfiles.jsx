@@ -18,10 +18,11 @@ const UploadFiles = () => {
     const formData = new FormData(e.target);
 
     try {
-      const uploadRes = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/upload-files`, {
+      // Corrected to use VITE_API_BASE_URL for consistency
+      const uploadRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/upload-files`, {
         method: 'POST',
         body: formData,
-        credentials: 'include', // ensures session cookie is sent
+        credentials: 'include',
       });
 
       if (!uploadRes.ok) {

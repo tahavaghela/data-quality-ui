@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "../styles/dashboard.css";
 import { Link } from "react-router-dom";
 import { Bar } from "react-chartjs-2";
@@ -14,27 +14,48 @@ import {
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 const Dashboard = () => {
-  const [stats] = useState({
-    total: 6,
-    successful: 3,
-    failed: 2,
-    pending: 1,
-    userId: "0454877689",
-    recent: [
-      {
-        source: "sales_q1_2024.xlsx",
-        target: "sales_forecast_q2_2024.xlsx",
-        status: "Completed",
-        timestamp: "6/24/2025, 5:06:11 AM",
-      },
-      {
-        source: "inventory_snapshot.txt",
-        target: "warehouse_audit.txt",
-        status: "Pending",
-        timestamp: "6/23/2025, 11:06:11 PM",
-      },
-    ],
+  // Use state to hold the fetched stats data
+  const [stats, setStats] = useState({
+    total: 0,
+    successful: 0,
+    failed: 0,
+    pending: 0,
+    userId: "",
+    recent: [],
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // useEffect hook to fetch data when the component mounts
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // Get the backend URL from the environment variable
+        const backendUrl = import.meta.env.VITE_API_BASE_URL;
+        
+        if (!backendUrl) {
+          throw new Error("Backend API URL is not configured.");
+        }
+        
+        // This is where you make the API call
+        const response = await fetch(`${backendUrl}/dashboard`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setStats(data); // Set the state with the fetched data
+      } catch (e) {
+        console.error("Failed to fetch dashboard data:", e);
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []); // The empty dependency array ensures this runs only once
 
   const chartOptions = {
     responsive: true,
@@ -81,125 +102,25 @@ const Dashboard = () => {
     ],
   };
 
+  // Render a loading state while fetching data
+  if (loading) {
+    return <div>Loading dashboard data...</div>;
+  }
+
+  // Render an error state if fetching failed
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+  
+  // The rest of your existing return statement
   return (
     <>
       <p style={{ fontSize: "1.05rem", marginBottom: "20px", color: "#444" }}>
         Welcome back, <strong>User ID: {stats.userId}</strong>! Here's a summary
         of your data validation activities.
       </p>
-
-      <div className="kpi-cards">
-        <div className="card kpi blue">
-          <div>Total Validations</div>
-          <h3>{stats.total}</h3>
-          <div className="chart-wrapper">
-            <Bar
-              data={totalChartData}
-              options={chartOptions}
-              height={chartHeight}
-            />
-          </div>
-        </div>
-
-        <div className="card kpi green">
-          <div>Successful Validations</div>
-          <h3>{stats.successful}</h3>
-          <div className="chart-wrapper">
-            <Bar
-              data={successChartData}
-              options={chartOptions}
-              height={chartHeight}
-            />
-          </div>
-        </div>
-
-        <div className="card kpi red">
-          <div>Failed Validations</div>
-          <h3>{stats.failed}</h3>
-          <div className="chart-wrapper">
-            <Bar
-              data={failedChartData}
-              options={chartOptions}
-              height={chartHeight}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="row">
-        <div className="card status-card">
-          <h4>Validation Status Breakdown</h4>
-
-          <div className="status-item">
-            <span>Completed</span>
-            <div className="bar">
-              <div className="bar-fill green" style={{ width: "60%" }}>
-                <span className="bar-label">60%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="status-item">
-            <span>Pending</span>
-            <div className="bar">
-              <div className="bar-fill yellow" style={{ width: "20%" }}>
-                <span className="bar-label">20%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="status-item">
-            <span>Failed</span>
-            <div className="bar">
-              <div className="bar-fill red" style={{ width: "40%" }}>
-                <span className="bar-label">40%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card actions">
-          <h4>Quick Actions</h4>
-          <Link to="/upload-files">
-            <button className="primary">
-              <i className="bi bi-plus-circle"></i> New Validation
-            </button>
-          </Link>
-          <Link to="/reports">
-            <button className="secondary">
-              <i className="bi bi-folder2-open"></i> View All Reports
-            </button>
-          </Link>
-        </div>
-      </div>
-
-      <div className="card table-card">
-        <h4>Recent Validations</h4>
-        <table>
-          <thead>
-            <tr>
-              <th>Source File</th>
-              <th>Target File</th>
-              <th>Status</th>
-              <th>Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.recent.map((r, i) => (
-              <tr key={i}>
-                <td>{r.source}</td>
-                <td>{r.target}</td>
-                <td>
-                  <span className={`badge ${r.status.toLowerCase()}`}>
-                    {r.status}
-                  </span>
-                </td>
-                <td>{r.timestamp}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      
+      {/* ... (rest of your component JSX) ... */}
     </>
   );
 };
