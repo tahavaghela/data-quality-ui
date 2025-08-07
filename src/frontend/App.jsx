@@ -9,11 +9,13 @@ import LandingPage from './pages/landingpage';
 import DetailedOverview from './pages/DetailedOverview';
 import DataProfile from './pages/DataProfile';
 import FailedCheck from './pages/FailedChecks';
+import Callback from "./pages/Callback";
 
 function App() {
   return (
       <Routes>
         <Route path="/" element={<LandingPage />} /> 
+        <Route path="/callback" element={<Callback />} />
         <Route path="/dashboard" element={<Layout title="Dashboard"><Dashboard /></Layout>} />
         <Route path="/upload-files" element={<Layout title="Upload Files"><UploadFiles /></Layout>} />
         <Route path="/reports" element={<Layout title="Reports"><Reports /></Layout>} />
