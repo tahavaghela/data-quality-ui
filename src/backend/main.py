@@ -1,3 +1,4 @@
+
 # main.py
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, BackgroundTasks, APIRouter, Response, Cookie
@@ -357,6 +358,12 @@ def generate_signed_url(gcs_path: str) -> str:
 # ------------------------------------------------------
 # Application Routes
 # ------------------------------------------------------
+@app.get("/api/me")
+async def get_me(request: Request):
+    user = request.session.get("username") # changed from 'user' to 'username'
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"user": user}
 
 @app.get("/api/dashboard")
 def dashboard(request: Request):
