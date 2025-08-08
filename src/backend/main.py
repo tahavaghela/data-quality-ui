@@ -1,3 +1,5 @@
+# main.py
+
 from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, BackgroundTasks, APIRouter, Response, Cookie
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import uuid
 import urllib.parse
 import base64
-
+import asyncio
 
 # ------------------------------------------------------
 # Pydantic models for request body validation
@@ -322,8 +324,6 @@ storage_client = None
 bucket = None
 try:
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-        # IMPORTANT: Replace 'YOUR GOOGLE_APPLICATION_CREDENTIALS_JSON' with the actual JSON string
-        # from your service account key file.
         credentials_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
         credentials = service_account.Credentials.from_service_account_info(credentials_info)
         storage_client = storage.Client(credentials=credentials)
@@ -405,19 +405,70 @@ def get_session(request: Request):
         raise HTTPException(status_code=404, detail="User not found")
     return JSONResponse({"id": user[0], "username": user[1], "email": user[2]})
 
+
+# ----------------------------------------------------------------------------------
+# UPDATED: File Upload and Database Insertion Endpoint
+# ----------------------------------------------------------------------------------
 @app.post("/api/upload-files")
-async def upload_files(request: Request, source_file: UploadFile = File(...), target_file: UploadFile = File(...)):
+async def upload_files(
+    request: Request,
+    source_file: UploadFile = File(...),
+    target_file: UploadFile = File(...)
+):
+    """
+    Handles concurrent upload of source and target files to GCS and
+    records the upload in CockroachDB.
+    """
     if not bucket:
         raise HTTPException(status_code=500, detail="GCS not configured")
+    
     username = request.session.get("username")
     if not username:
         raise HTTPException(status_code=401, detail="Not logged in")
+    
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     folder_prefix = f"{username}/uploads/{timestamp}_"
-    for file in [source_file, target_file]:
-        blob = bucket.blob(f"{folder_prefix}{file.filename}")
-        blob.upload_from_file(file.file, content_type=file.content_type)
-    return {"message": "Files uploaded to GCS successfully"}
+    
+    # Define a helper function for uploading to GCS
+    async def upload_to_gcs_task(file: UploadFile, filename: str):
+        blob = bucket.blob(f"{folder_prefix}{filename}")
+        # Read the file content asynchronously
+        file_content = await file.read()
+        # Upload the content to GCS
+        blob.upload_from_string(file_content, content_type=file.content_type)
+        return filename
+
+    try:
+        # Upload both files concurrently using asyncio.gather
+        source_filename, target_filename = await asyncio.gather(
+            upload_to_gcs_task(source_file, source_file.filename),
+            upload_to_gcs_task(target_file, target_file.filename)
+        )
+        
+        # Insert the file names into the database
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO validation_history (
+                    username,
+                    source_file_name,
+                    target_file_name,
+                    is_valid,
+                    created_at
+                ) VALUES (%s, %s, %s, %s, %s)
+            """, (username, source_filename, target_filename, False, datetime.utcnow()))
+            conn.commit()
+            
+        logger.info(f"Files '{source_filename}' and '{target_filename}' uploaded and recorded for user '{username}'.")
+        
+        return {"message": "Files uploaded to GCS and recorded in DB successfully"}
+    
+    except Exception as e:
+        # Rollback the transaction if there's a database error
+        if 'conn' in locals() and not conn.closed:
+            conn.rollback()
+        logger.error(f"File upload or DB insertion failed for user '{username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
 @app.get("/api/upload-history")
 async def upload_history(request: Request, page: int = 1, search: str = None, status: str = None):
@@ -556,7 +607,10 @@ async def pubsub_handler(payload: PubSubMessage, background_tasks: BackgroundTas
 
         username = parts[0]
         file_name = parts[-1]
-
+        
+        # This part of the code seems to handle a single file, but your new endpoint
+        # handles two. You might want to review this logic. For now, I'm leaving
+        # this section untouched as it's separate from the new upload endpoint.
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -576,4 +630,3 @@ async def pubsub_handler(payload: PubSubMessage, background_tasks: BackgroundTas
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
-

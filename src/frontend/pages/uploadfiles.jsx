@@ -1,98 +1,68 @@
-import React, { useState } from 'react';
-import '../styles/uploadfiles.css';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import "../styles/uploadfiles.css";
 
 const UploadFiles = () => {
-  const [sourceFileName, setSourceFileName] = useState('No file chosen');
-  const [targetFileName, setTargetFileName] = useState('No file chosen');
-  const [loading, setLoading] = useState(false);
+  const [sourceFile, setSourceFile] = useState(null);
+  const [targetFile, setTargetFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [user, setUser] = useState(null);
 
-  const handleFileChange = (e, setFileName) => {
-    const file = e.target.files[0];
-    setFileName(file ? file.name : 'No file chosen');
-  };
+  useEffect(() => {
+    // Fetch current user session from backend
+    axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/me`, { withCredentials: true })
+      .then(res => setUser(res.data))
+      .catch(err => console.error("User not logged in", err));
+  }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleUpload = async () => {
+    if (!sourceFile || !targetFile) {
+      setUploadStatus("Please select both files.");
+      return;
+    }
 
-    const formData = new FormData(e.target);
+    const formData = new FormData();
+    formData.append("source_file", sourceFile);
+    formData.append("target_file", targetFile);
 
     try {
-      // Corrected to use VITE_API_BASE_URL for consistency
-      const uploadRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/upload-files`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error('Upload failed');
-      }
-
-      await uploadRes.json();
-      alert('Files uploaded successfully!');
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_BASE_URL}/upload`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          withCredentials: true,
+        }
+      );
+      setUploadStatus("Upload successful and logged to DB!");
     } catch (err) {
-      alert('Upload failed.');
-    } finally {
-      setLoading(false);
+      console.error(err);
+      setUploadStatus("Upload failed.");
     }
   };
 
   return (
     <div className="upload-page">
-      <h2 className="upload-title">Upload Files</h2>
-      <p className="upload-subtext">
-        Upload and validate your data files with our advanced comparison system.
-      </p>
-
-      <form onSubmit={handleSubmit} className="upload-form">
-        <div className="file-card">
-          <h4>File Selection</h4>
-          <div className="file-pair">
-            <div className="file-box">
-              <strong>Source File</strong>
-              <div className="file-drop">
-                <p>Drag & Drop your file here or</p>
-                <label className="file-button">
-                  Choose Source File
-                  <input
-                    type="file"
-                    name="source_file"
-                    hidden
-                    onChange={(e) => handleFileChange(e, setSourceFileName)}
-                  />
-                </label>
-                <p className="file-meta">Accepted: .csv, .xlsx, .txt | Max: 50MB</p>
-                <p className="file-name">{sourceFileName}</p>
-              </div>
+      <div className="upload-card">
+        <h2>Upload Files</h2>
+        {user ? (
+          <>
+            <div className="file-input-group">
+              <label>Source File</label>
+              <input type="file" onChange={(e) => setSourceFile(e.target.files[0])} />
             </div>
-            <div className="file-box">
-              <strong>Target File</strong>
-              <div className="file-drop">
-                <p>Drag & Drop your file here or</p>
-                <label className="file-button">
-                  Choose Target File
-                  <input
-                    type="file"
-                    name="target_file"
-                    hidden
-                    onChange={(e) => handleFileChange(e, setTargetFileName)}
-                  />
-                </label>
-                <p className="file-meta">Accepted: .csv, .xlsx, .txt | Max: 50MB</p>
-                <p className="file-name">{targetFileName}</p>
-              </div>
+            <div className="file-input-group">
+              <label>Target File</label>
+              <input type="file" onChange={(e) => setTargetFile(e.target.files[0])} />
             </div>
-          </div>
-
-          <button type="submit" className="upload-btn" disabled={loading}>
-            {loading ? 'Uploading...' : '⬆ Upload & Validate'}
-          </button>
-        </div>
-      </form>
-
-      <div className="user-tag">
-        <i className="bi bi-person-circle"></i> You are logged in.
+            <button className="upload-btn" onClick={handleUpload}>
+              Upload
+            </button>
+            {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
+          </>
+        ) : (
+          <p>Please login to upload files.</p>
+        )}
       </div>
     </div>
   );
