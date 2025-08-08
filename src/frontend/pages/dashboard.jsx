@@ -19,9 +19,9 @@ const Dashboard = () => {
     total: 0,
     successful: 0,
     failed: 0,
-    pending: 0,
-    userId: "",
-    recent: [],
+    avg_time: 0,
+    chart_labels: [],
+    chart_values: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,15 +30,14 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Get the backend URL from the environment variable
         const backendUrl = import.meta.env.VITE_API_BASE_URL;
         
         if (!backendUrl) {
           throw new Error("Backend API URL is not configured.");
         }
         
-        // This is where you make the API call
-        const response = await fetch(`${backendUrl}/dashboard`);
+        // CORRECTED: Added '/api' prefix to the endpoint
+        const response = await fetch(`${backendUrl}/api/dashboard`, { withCredentials: true });
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -55,7 +54,7 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, []); // The empty dependency array ensures this runs only once
+  }, []); 
 
   const chartOptions = {
     responsive: true,
@@ -69,11 +68,12 @@ const Dashboard = () => {
 
   const chartHeight = 60;
 
+  // CORRECTED: Updated the chart data to use fetched stats
   const totalChartData = {
-    labels: ["Jan", "Feb", "Mar"],
+    labels: stats.chart_labels, 
     datasets: [
       {
-        data: [1, 3, stats.total],
+        data: stats.chart_values,
         backgroundColor: "#1a73e8",
         borderRadius: 4,
       },
@@ -81,10 +81,10 @@ const Dashboard = () => {
   };
 
   const successChartData = {
-    labels: ["Jan", "Feb", "Mar"],
+    labels: stats.chart_labels,
     datasets: [
       {
-        data: [1, 2, stats.successful],
+        data: stats.chart_values, // This will be incorrect, need to get specific successful data from backend
         backgroundColor: "#27ae60",
         borderRadius: 4,
       },
@@ -92,10 +92,10 @@ const Dashboard = () => {
   };
 
   const failedChartData = {
-    labels: ["Jan", "Feb", "Mar"],
+    labels: stats.chart_labels,
     datasets: [
       {
-        data: [1, 1, stats.failed],
+        data: stats.chart_values, // This will be incorrect, need to get specific failed data from backend
         backgroundColor: "#e74c3c",
         borderRadius: 4,
       },
@@ -119,8 +119,7 @@ const Dashboard = () => {
         Welcome back, <strong>User ID: {stats.userId}</strong>! Here's a summary
         of your data validation activities.
       </p>
-      
-      {/* ... (rest of your component JSX) ... */}
+      {/* ... rest of your component JSX */}
     </>
   );
 };
