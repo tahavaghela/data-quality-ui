@@ -16,7 +16,7 @@ const ProtectedContent = ({ user, onLogout }) => (
   <Layout user={user} onLogout={onLogout}>
     <Routes>
       <Route path="/dashboard" element={<Dashboard user={user} onLogout={onLogout} />} />
-      <Route path="/upload-files" element={<UploadFiles user={user} />} />
+      <Route path="/upload-files" element={<UploadFiles />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/failed-check" element={<FailedChecks />} />
       <Route path="/profile-summary" element={<DataProfile />} />

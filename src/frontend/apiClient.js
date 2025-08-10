@@ -9,15 +9,15 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Add an interceptor to handle 401 Unauthorized errors globally.
+// Add a global interceptor to handle 401 Unauthorized errors gracefully.
+// It no longer forces a hard redirect, which caused the infinite loop.
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If the server responds with a 401, it means the token is missing or expired.
+    // If the server responds with a 401, simply reject the promise.
+    // The component making the API call will then handle the unauthenticated state.
     if (error.response && error.response.status === 401) {
-      console.error('Unauthorized request. Redirecting to login.');
-      // Redirect the user to the login page to re-authenticate.
-      window.location.href = '/login'; 
+      console.error('Unauthorized request.');
     }
     return Promise.reject(error);
   }
