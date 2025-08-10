@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, Link } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import Dashboard from './pages/dashboard';
 import UploadFiles from './pages/uploadfiles';
 import Reports from './pages/reports';
@@ -12,7 +12,33 @@ import FailedChecks from './pages/FailedChecks';
 import Callback from "./pages/Callback";
 import apiClient from "./apiClient";
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedContent = ({ user, onLogout }) => (
+  <Layout user={user} onLogout={onLogout}>
+    <Routes>
+      <Route path="/dashboard" element={<Dashboard user={user} onLogout={onLogout} />} />
+      <Route path="/upload-files" element={<UploadFiles user={user} />} />
+      <Route path="/reports" element={<Reports />} />
+      <Route path="/failed-check" element={<FailedChecks />} />
+      <Route path="/profile-summary" element={<DataProfile />} />
+      <Route path="/detailed-overview" element={<DetailedOverview />} />
+      <Route path="/upload-history" element={<UploadHistory />} />
+      {/* Fallback for protected routes */}
+      <Route path="*" element={<Dashboard user={user} onLogout={onLogout} />} />
+    </Routes>
+  </Layout>
+);
+
+const PublicContent = ({ handleLogin }) => (
+  <Routes>
+    <Route path="/" element={<LandingPage handleLogin={handleLogin} />} /> 
+    <Route path="/callback" element={<Callback />} />
+    <Route path="/login" element={<LandingPage handleLogin={handleLogin} />} />
+    {/* Redirect any unmatched route to the landing page */}
+    <Route path="*" element={<LandingPage handleLogin={handleLogin} />} />
+  </Routes>
+);
+
+function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -24,13 +50,27 @@ const ProtectedRoute = ({ children }) => {
         setUser(response.data.user);
       } catch (error) {
         console.error("Authentication check failed:", error);
-        navigate('/login'); // Redirect to login page on authentication failure
+        setUser(null);
       } finally {
         setLoading(false);
       }
     };
     checkAuth();
-  }, [navigate]);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await apiClient.get('/api/logout');
+      setUser(null);
+      navigate('/login');
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+  
+  const handleLogin = () => {
+    window.location.href = import.meta.env.VITE_API_BASE_URL + '/api/login';
+  };
 
   if (loading) {
     return (
@@ -40,61 +80,12 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  const handleLogout = async () => {
-    try {
-      await apiClient.get('/api/logout');
-      navigate('/login');
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
-
-  if (!user) {
-    return <LandingPage />;
+  // Conditionally render based on authentication status
+  if (user) {
+    return <ProtectedContent user={user} onLogout={handleLogout} />;
+  } else {
+    return <PublicContent handleLogin={handleLogin} />;
   }
-
-  return (
-    <Layout user={user} onLogout={handleLogout}>
-      {children}
-    </Layout>
-  );
-};
-
-const Login = () => {
-  const handleLogin = () => {
-    window.location.href = import.meta.env.VITE_API_BASE_URL + '/api/login';
-  };
-  
-  return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
-      <h1 className="text-3xl font-bold mb-4">Welcome to DataVault</h1>
-      <button 
-        onClick={handleLogin}
-        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-      >
-        Login with Kinde
-      </button>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} /> 
-      <Route path="/callback" element={<Callback />} />
-      <Route path="/login" element={<Login />} />
-
-      {/* Protected Routes */}
-      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="/upload-files" element={<ProtectedRoute><UploadFiles /></ProtectedRoute>} />
-      <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-      <Route path="/failed-check" element={<ProtectedRoute><FailedChecks /></ProtectedRoute>} />
-      <Route path="/profile-summary" element={<ProtectedRoute><DataProfile /></ProtectedRoute>} />
-      <Route path="/detailed-overview" element={<ProtectedRoute><DetailedOverview /></ProtectedRoute>} />
-      <Route path="/upload-history" element={<ProtectedRoute><UploadHistory /></ProtectedRoute>} />
-    </Routes>
-  );
 }
 
 export default App;

@@ -2,9 +2,8 @@ import axios from 'axios';
 
 // Create a pre-configured Axios client.
 const apiClient = axios.create({
-  // IMPORTANT: Set this to your backend's base URL
-  baseURL: 'https://fastapi-backend-508881353671.asia-south1.run.app', 
-  
+  // IMPORTANT: This should be your backend's base URL, configured in Vercel.
+  baseURL: import.meta.env.VITE_API_BASE_URL, 
   // This is the crucial line: it ensures the browser sends the access_token cookie
   // with every request to the backend.
   withCredentials: true,

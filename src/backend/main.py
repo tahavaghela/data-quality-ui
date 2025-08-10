@@ -19,7 +19,7 @@ import uuid
 import urllib.parse
 import base64
 import asyncio
-from starlette.concurrency import run_in_threadpool # New import for async DB calls
+from starlette.concurrency import run_in_threadpool 
 
 # ------------------------------------------------------
 # Pydantic models for request body validation
@@ -72,7 +72,7 @@ if not frontend_url:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[frontend_url],
-    allow_credentials=True, # Critical for allowing cookies to be sent
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -164,11 +164,9 @@ def upsert_user(user_info: dict):
             logger.error("DB upsert error for Kinde ID %s: %s", kinde_id, e, exc_info=True)
             raise HTTPException(status_code=500, detail="Database error during user upsert")
 
-# NEW DEPENDENCY FUNCTION TO GET USER INFO FROM JWT
 def get_current_user_id(access_token: str = Cookie(None)):
     """
     Decodes the JWT from the access_token cookie to get the user's ID.
-    This replaces the session middleware for authentication.
     """
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated. Missing access token.")
@@ -194,7 +192,7 @@ def get_current_user_id(access_token: str = Cookie(None)):
             audience=AUDIENCE,
             issuer=f"https://{KINDE_DOMAIN}"
         )
-        return payload.get("sub") # The 'sub' claim is the Kinde ID, which is unique
+        return payload.get("sub")
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired. Please log in again.")
     except JWTClaimsError as e:
@@ -237,7 +235,7 @@ async def login(response: Response):
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=300 # 5 minutes
+        max_age=300
     )
     return RedirectResponse(url=auth_url)
 
@@ -299,18 +297,16 @@ async def auth_callback(
 
         logger.info(" User info from ID token: %s", payload)
 
-        # Upsert user info into the database using the new function
         await run_in_threadpool(upsert_user, payload)
 
-        # Set the access_token as a cookie and redirect to the frontend
-        response = RedirectResponse(url=frontend_url)
+        response = RedirectResponse(url=frontend_url + "/callback")
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=3600 # Set a suitable expiration time in seconds (1 hour)
+            max_age=3600
         )
         response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="lax")
         return response
@@ -327,13 +323,11 @@ async def auth_callback(
 
 @auth_router.get("/logout")
 def logout(response: Response):
-    # This logout clears the cookie and redirects to the frontend's login page
     response = RedirectResponse(url=f"{frontend_url}/login")
     response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax")
     return response
 
 app.include_router(auth_router, prefix="/api")
-
 
 # ------------------------------------------------------
 # Google Cloud Storage setup
@@ -351,7 +345,6 @@ try:
             bucket = storage_client.bucket(bucket_name)
 except Exception as e:
     logger.error(f"Failed to initialize GCS: {e}")
-
 
 # ------------------------------------------------------
 # Database connection
@@ -423,7 +416,6 @@ def get_session(username: str = Depends(get_current_username)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return JSONResponse({"id": user[0], "username": user[1], "email": user[2]})
-
 
 # ----------------------------------------------------------------------------------
 # File Upload and Database Insertion Endpoint
@@ -643,4 +635,3 @@ async def pubsub_handler(payload: PubSubMessage):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
-
