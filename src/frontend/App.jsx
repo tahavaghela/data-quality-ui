@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Link } from 'react-router-dom';
 import Dashboard from './pages/dashboard';
 import UploadFiles from './pages/uploadfiles';
 import Reports from './pages/reports';
@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children }) => {
         setUser(response.data.user);
       } catch (error) {
         console.error("Authentication check failed:", error);
-        navigate('/'); // Redirect to landing page on authentication failure
+        navigate('/login'); // Redirect to login page on authentication failure
       } finally {
         setLoading(false);
       }
@@ -43,14 +43,14 @@ const ProtectedRoute = ({ children }) => {
   const handleLogout = async () => {
     try {
       await apiClient.get('/api/logout');
-      navigate('/');
+      navigate('/login');
     } catch (error) {
       console.error("Logout failed:", error);
     }
   };
 
   if (!user) {
-    return <LandingPage />; // Or a dedicated Login component
+    return <LandingPage />;
   }
 
   return (
@@ -60,11 +60,30 @@ const ProtectedRoute = ({ children }) => {
   );
 };
 
+const Login = () => {
+  const handleLogin = () => {
+    window.location.href = import.meta.env.VITE_API_BASE_URL + '/api/login';
+  };
+  
+  return (
+    <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
+      <h1 className="text-3xl font-bold mb-4">Welcome to DataVault</h1>
+      <button 
+        onClick={handleLogin}
+        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+      >
+        Login with Kinde
+      </button>
+    </div>
+  );
+};
+
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} /> 
       <Route path="/callback" element={<Callback />} />
+      <Route path="/login" element={<Login />} />
 
       {/* Protected Routes */}
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
