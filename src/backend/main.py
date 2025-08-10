@@ -1,10 +1,8 @@
-
 # main.py
 
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, BackgroundTasks, APIRouter, Response, Cookie
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from google.cloud import storage
 from google.oauth2 import service_account
 from dotenv import load_dotenv
@@ -21,6 +19,7 @@ import uuid
 import urllib.parse
 import base64
 import asyncio
+from starlette.concurrency import run_in_threadpool # New import for async DB calls
 
 # ------------------------------------------------------
 # Pydantic models for request body validation
@@ -46,12 +45,12 @@ required_vars = [
     "DATABASE_URL",
     "GOOGLE_APPLICATION_CREDENTIALS_JSON",
     "BUCKET_NAME",
-    "SESSION_SECRET_KEY",
     "KINDE_ISSUER_URL",
     "CLIENT_ID",
     "CLIENT_SECRET",
     "KINDE_CALLBACK_URL",
-    "KINDE_AUDIENCE"
+    "KINDE_AUDIENCE",
+    "FRONTEND_URL"
 ]
 missing = [var for var in required_vars if not os.getenv(var)]
 print("ENV VARS LOADED:")
@@ -66,12 +65,14 @@ if missing:
 # ------------------------------------------------------
 app = FastAPI()
 
-frontend_url = os.getenv("FRONTEND_URL", "*")  # Default to '*' for local dev
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY", "super-secret"))
+frontend_url = os.getenv("FRONTEND_URL")
+if not frontend_url:
+    raise RuntimeError("FRONTEND_URL environment variable is not set. This is required.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],  # Now uses the environment variable
-    allow_credentials=True,
+    allow_origins=[frontend_url],
+    allow_credentials=True, # Critical for allowing cookies to be sent
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -84,7 +85,7 @@ KINDE_DOMAIN = os.getenv("KINDE_ISSUER_URL", "").replace("https://", "").rstrip(
 KINDE_CLIENT_ID = os.getenv("CLIENT_ID")
 KINDE_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 KINDE_REDIRECT_URI = os.getenv("KINDE_CALLBACK_URL")
-AUDIENCE = os.getenv("KINDE_AUDIENCE", KINDE_CLIENT_ID) # Default to KINDE_CLIENT_ID if KINDE_AUDIENCE is not set
+AUDIENCE = os.getenv("KINDE_AUDIENCE", KINDE_CLIENT_ID)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Check for required Kinde variables
@@ -163,10 +164,15 @@ def upsert_user(user_info: dict):
             logger.error("DB upsert error for Kinde ID %s: %s", kinde_id, e, exc_info=True)
             raise HTTPException(status_code=500, detail="Database error during user upsert")
 
-def verify_token(access_token: str = Cookie(None)) -> dict:
+# NEW DEPENDENCY FUNCTION TO GET USER INFO FROM JWT
+def get_current_user_id(access_token: str = Cookie(None)):
+    """
+    Decodes the JWT from the access_token cookie to get the user's ID.
+    This replaces the session middleware for authentication.
+    """
     if not access_token:
-        raise HTTPException(status_code=401, detail="Missing access token cookie")
-
+        raise HTTPException(status_code=401, detail="Not authenticated. Missing access token.")
+    
     try:
         headers = jwt.get_unverified_header(access_token)
         kid = headers.get("kid")
@@ -188,13 +194,29 @@ def verify_token(access_token: str = Cookie(None)) -> dict:
             audience=AUDIENCE,
             issuer=f"https://{KINDE_DOMAIN}"
         )
-        return payload
+        return payload.get("sub") # The 'sub' claim is the Kinde ID, which is unique
     except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired.")
+        raise HTTPException(status_code=401, detail="Token has expired. Please log in again.")
     except JWTClaimsError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid claims: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid token claims: {str(e)}")
     except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
+
+def get_current_username(kinde_id: str = Depends(get_current_user_id)):
+    """
+    Fetches the username from the database based on the Kinde ID.
+    """
+    if not kinde_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    conn = get_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT username FROM users WHERE kinde_id = %s", (kinde_id,))
+        result = cursor.fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="User not found in database")
+        return result[0]
+
 
 @auth_router.get("/login")
 async def login(response: Response):
@@ -221,7 +243,7 @@ async def login(response: Response):
 
 @auth_router.get("/callback")
 async def auth_callback(
-    request: Request,
+    response: Response,
     code: str,
     state: str,
     oauth_state: str = Depends(lambda request: request.cookies.get("oauth_state"))
@@ -277,20 +299,18 @@ async def auth_callback(
 
         logger.info(" User info from ID token: %s", payload)
 
-        final_username_for_session = upsert_user(payload)
-        if not final_username_for_session:
-            raise HTTPException(status_code=500, detail="Failed to retrieve username after upsert")
+        # Upsert user info into the database using the new function
+        await run_in_threadpool(upsert_user, payload)
 
-        request.session["username"] = final_username_for_session
-        logger.info(" Session username set to: %s", request.session['username'])
-
-        response = RedirectResponse(url=KINDE_REDIRECT_URI)
+        # Set the access_token as a cookie and redirect to the frontend
+        response = RedirectResponse(url=frontend_url)
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             secure=True,
-            samesite="lax"
+            samesite="lax",
+            max_age=3600 # Set a suitable expiration time in seconds (1 hour)
         )
         response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="lax")
         return response
@@ -306,14 +326,12 @@ async def auth_callback(
         raise HTTPException(status_code=500, detail=f"Authentication callback failed: {str(e)}")
 
 @auth_router.get("/logout")
-def logout(request: Request):
-    request.session.clear()
-    response = RedirectResponse(url="/")
-    response.delete_cookie(key="access_token")
-    response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="lax")
+def logout(response: Response):
+    # This logout clears the cookie and redirects to the frontend's login page
+    response = RedirectResponse(url=f"{frontend_url}/login")
+    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax")
     return response
 
-# Now include the auth router with the correct prefix
 app.include_router(auth_router, prefix="/api")
 
 
@@ -357,17 +375,14 @@ def generate_signed_url(gcs_path: str) -> str:
 
 # ------------------------------------------------------
 # Application Routes
+# All protected routes now use `get_current_username` as a dependency.
 # ------------------------------------------------------
 @app.get("/api/me")
-async def get_me(request: Request):
-    user = request.session.get("username") # changed from 'user' to 'username'
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"user": user}
+async def get_me(username: str = Depends(get_current_username)):
+    return {"user": username}
 
 @app.get("/api/dashboard")
-def dashboard(request: Request):
-    username = request.session.get("username")
+def dashboard(username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("""
@@ -400,10 +415,7 @@ def dashboard(request: Request):
     })
 
 @app.get("/api/session")
-def get_session(request: Request):
-    username = request.session.get("username")
-    if not username:
-        raise HTTPException(status_code=401, detail="Not logged in")
+def get_session(username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("SELECT id, username, email FROM users WHERE username = %s", (username,))
@@ -414,46 +426,14 @@ def get_session(request: Request):
 
 
 # ----------------------------------------------------------------------------------
-# UPDATED: File Upload and Database Insertion Endpoint
+# File Upload and Database Insertion Endpoint
 # ----------------------------------------------------------------------------------
-@app.post("/api/upload-files")
-async def upload_files(
-    request: Request,
-    source_file: UploadFile = File(...),
-    target_file: UploadFile = File(...)
-):
+async def insert_file_records(username: str, source_filename: str, target_filename: str):
     """
-    Handles concurrent upload of source and target files to GCS and
-    records the upload in CockroachDB.
+    Synchronous database insertion logic, to be run in a threadpool.
     """
-    if not bucket:
-        raise HTTPException(status_code=500, detail="GCS not configured")
-    
-    username = request.session.get("username")
-    if not username:
-        raise HTTPException(status_code=401, detail="Not logged in")
-    
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    folder_prefix = f"{username}/uploads/{timestamp}_"
-    
-    # Define a helper function for uploading to GCS
-    async def upload_to_gcs_task(file: UploadFile, filename: str):
-        blob = bucket.blob(f"{folder_prefix}{filename}")
-        # Read the file content asynchronously
-        file_content = await file.read()
-        # Upload the content to GCS
-        blob.upload_from_string(file_content, content_type=file.content_type)
-        return filename
-
+    conn = get_connection()
     try:
-        # Upload both files concurrently using asyncio.gather
-        source_filename, target_filename = await asyncio.gather(
-            upload_to_gcs_task(source_file, source_file.filename),
-            upload_to_gcs_task(target_file, target_file.filename)
-        )
-        
-        # Insert the file names into the database
-        conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
                 INSERT INTO validation_history (
@@ -465,21 +445,56 @@ async def upload_files(
                 ) VALUES (%s, %s, %s, %s, %s)
             """, (username, source_filename, target_filename, False, datetime.utcnow()))
             conn.commit()
-            
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/api/upload-files")
+async def upload_files(
+    username: str = Depends(get_current_username),
+    source_file: UploadFile = File(...),
+    target_file: UploadFile = File(...)
+):
+    """
+    Handles concurrent upload of source and target files to GCS and
+    records the upload in CockroachDB.
+    """
+    if not bucket:
+        raise HTTPException(status_code=500, detail="GCS not configured")
+    
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    folder_prefix = f"{username}/uploads/{timestamp}_"
+    
+    # Define a helper function for uploading to GCS
+    async def upload_to_gcs_task(file: UploadFile, filename: str):
+        blob = bucket.blob(f"{folder_prefix}{filename}")
+        file_content = await file.read()
+        blob.upload_from_string(file_content, content_type=file.content_type)
+        return filename
+
+    try:
+        # Upload both files concurrently using asyncio.gather
+        source_filename, target_filename = await asyncio.gather(
+            upload_to_gcs_task(source_file, source_file.filename),
+            upload_to_gcs_task(target_file, target_file.filename)
+        )
+        
+        # Run the blocking DB insertion in a background thread
+        await run_in_threadpool(insert_file_records, username, source_filename, target_filename)
+
         logger.info(f"Files '{source_filename}' and '{target_filename}' uploaded and recorded for user '{username}'.")
         
         return {"message": "Files uploaded to GCS and recorded in DB successfully"}
     
     except Exception as e:
-        # Rollback the transaction if there's a database error
-        if 'conn' in locals() and not conn.closed:
-            conn.rollback()
         logger.error(f"File upload or DB insertion failed for user '{username}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
 @app.get("/api/upload-history")
-async def upload_history(request: Request, page: int = 1, search: str = None, status: str = None):
-    username = request.session.get("username")
+async def upload_history(username: str = Depends(get_current_username), page: int = 1, search: str = None, status: str = None):
     conn = get_connection()
     base_query = "SELECT source_file_name, target_file_name, is_valid, created_at FROM validation_history WHERE username = %s"
     filters = [username]
@@ -504,8 +519,7 @@ async def upload_history(request: Request, page: int = 1, search: str = None, st
     return JSONResponse({"records": data, "current_page": page})
 
 @app.get("/api/reports")
-def reports(request: Request):
-    username = request.session.get("username")
+def reports(username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("""
@@ -533,8 +547,7 @@ def reports(request: Request):
     return JSONResponse({"reports": formatted})
 
 @app.get("/api/reports/{id}/checks")
-def report_checks(id: int, request: Request):
-    username = request.session.get("username")
+def report_checks(id: int, username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("SELECT checks, failed_checks_url FROM reports WHERE id = %s AND username = %s", (id, username))
@@ -544,8 +557,7 @@ def report_checks(id: int, request: Request):
     return JSONResponse({"checks": result[0], "download_url": generate_signed_url(result[1])})
 
 @app.get("/api/reports/{id}/profiling")
-def report_profiling(id: int, request: Request):
-    username = request.session.get("username")
+def report_profiling(id: int, username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("SELECT profiling, data_profiling_url FROM reports WHERE id = %s AND username = %s", (id, username))
@@ -555,8 +567,7 @@ def report_profiling(id: int, request: Request):
     return JSONResponse({"profile": result[0], "download_url": generate_signed_url(result[1])})
 
 @app.get("/api/reports/{id}/detailed")
-def report_detailed(id: int, request: Request):
-    username = request.session.get("username")
+def report_detailed(id: int, username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("SELECT detailedoverview, detailed_overview_url FROM reports WHERE id = %s AND username = %s", (id, username))
@@ -566,8 +577,7 @@ def report_detailed(id: int, request: Request):
     return JSONResponse({"detailed_overview": result[0], "download_url": generate_signed_url(result[1])})
 
 @app.get("/api/profile")
-def get_profile(request: Request):
-    username = request.session.get("username")
+def get_profile(username: str = Depends(get_current_username)):
     conn = get_connection()
     with conn.cursor() as cursor:
         cursor.execute("SELECT username, email, first_name, last_name FROM users WHERE username = %s", (username,))
@@ -582,8 +592,7 @@ def get_profile(request: Request):
     })
 
 @app.post("/api/account-settings")
-def update_password(request: Request, current_password: str = Form(...), new_password: str = Form(...), confirm_password: str = Form(...)):
-    username = request.session.get("username")
+def update_password(username: str = Depends(get_current_username), current_password: str = Form(...), new_password: str = Form(...), confirm_password: str = Form(...)):
     if new_password != confirm_password:
         return JSONResponse(status_code=400, content={"error": "Passwords do not match"})
     conn = get_connection()
@@ -598,7 +607,7 @@ def update_password(request: Request, current_password: str = Form(...), new_pas
     return JSONResponse({"message": "Password updated"})
 
 @app.post("/pubsub-handler")
-async def pubsub_handler(payload: PubSubMessage, background_tasks: BackgroundTasks):
+async def pubsub_handler(payload: PubSubMessage):
     try:
         message_data = base64.b64decode(payload.message["data"]).decode("utf-8")
         attributes = payload.message.get("attributes", {})
@@ -615,9 +624,6 @@ async def pubsub_handler(payload: PubSubMessage, background_tasks: BackgroundTas
         username = parts[0]
         file_name = parts[-1]
         
-        # This part of the code seems to handle a single file, but your new endpoint
-        # handles two. You might want to review this logic. For now, I'm leaving
-        # this section untouched as it's separate from the new upload endpoint.
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -637,3 +643,4 @@ async def pubsub_handler(payload: PubSubMessage, background_tasks: BackgroundTas
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+
