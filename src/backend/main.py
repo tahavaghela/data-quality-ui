@@ -1,6 +1,6 @@
 # main.py
 
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie, Header
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie, Header,Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import storage
@@ -260,8 +260,9 @@ async def auth_callback(
     response: Response,
     code: str,
     state: str,
-    oauth_state: str = Depends(lambda request: request.cookies.get("oauth_state"))
-):
+    request: Request
+    ):
+    oauth_state =  request.cookies.get("oauth_state")
     if not oauth_state or oauth_state != state:
         logger.error("OAuth state mismatch: cookie=%s, received_url_param=%s", oauth_state, state)
         raise HTTPException(status_code=400, detail="Invalid state parameter or state mismatch.")
