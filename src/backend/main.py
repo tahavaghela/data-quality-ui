@@ -1,6 +1,6 @@
 # main.py
 
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie, Header
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import storage
@@ -19,7 +19,8 @@ import uuid
 import urllib.parse
 import base64
 import asyncio
-from starlette.concurrency import run_in_threadpool 
+from starlette.concurrency import run_in_threadpool
+from typing import Optional
 
 # ------------------------------------------------------
 # Pydantic models for request body validation
@@ -69,9 +70,12 @@ frontend_url = os.getenv("FRONTEND_URL")
 if not frontend_url:
     raise RuntimeError("FRONTEND_URL environment variable is not set. This is required.")
 
+# Allow exact frontend URL and optionally localhost for dev.
+ALLOW_ORIGINS = [frontend_url, "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -164,15 +168,24 @@ def upsert_user(user_info: dict):
             logger.error("DB upsert error for Kinde ID %s: %s", kinde_id, e, exc_info=True)
             raise HTTPException(status_code=500, detail="Database error during user upsert")
 
-def get_current_user_id(access_token: str = Cookie(None)):
+def get_current_user_id(access_token: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)):
     """
-    Decodes the JWT from the access_token cookie to get the user's ID.
+    Decodes the JWT from the access_token cookie or Authorization header to get the user's ID.
+    Accepts:
+      - Cookie: access_token
+      - Authorization header: Bearer <token>
     """
-    if not access_token:
+    token = None
+    if access_token:
+        token = access_token
+    elif authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated. Missing access token.")
-    
+
     try:
-        headers = jwt.get_unverified_header(access_token)
+        headers = jwt.get_unverified_header(token)
         kid = headers.get("kid")
         if not kid:
             raise HTTPException(status_code=401, detail="Missing 'kid' in token header.")
@@ -186,7 +199,7 @@ def get_current_user_id(access_token: str = Cookie(None)):
     try:
         public_key = jwk.construct(key_data)
         payload = jwt.decode(
-            access_token,
+            token,
             key=public_key,
             algorithms=[key_data.get("alg", "RS256")],
             audience=AUDIENCE,
@@ -229,12 +242,15 @@ async def login(response: Response):
     encoded_params = urllib.parse.urlencode(redirect_params)
     auth_url = f"https://{KINDE_DOMAIN}/oauth2/auth?{encoded_params}"
 
+    # Set oauth_state cookie so we can validate it on callback.
+    # This cookie must survive cross-site redirect from the browser -> Kinde -> back to backend,
+    # so we use Secure + SameSite=None.
     response.set_cookie(
         key="oauth_state",
         value=state,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
         max_age=300
     )
     return RedirectResponse(url=auth_url)
@@ -299,16 +315,19 @@ async def auth_callback(
 
         await run_in_threadpool(upsert_user, payload)
 
-        response = RedirectResponse(url=frontend_url + "/callback")
+        # Redirect user back to frontend callback route with cookie set.
+        response = RedirectResponse(url=frontend_url + "/dashboard")
+        # Set access_token cookie with secure cross-site flags so browser will send it from frontend -> backend.
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="none",
             max_age=3600
         )
-        response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="lax")
+        # Remove oauth_state cookie (use same flags to ensure cookie is found & removed)
+        response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="none")
         return response
 
     except requests.RequestException as e:
@@ -324,7 +343,8 @@ async def auth_callback(
 @auth_router.get("/logout")
 def logout(response: Response):
     response = RedirectResponse(url=f"{frontend_url}/login")
-    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax")
+    # Delete cookie with same flags used to set it.
+    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="none")
     return response
 
 app.include_router(auth_router, prefix="/api")

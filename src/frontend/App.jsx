@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Dashboard from './pages/dashboard';
 import UploadFiles from './pages/uploadfiles';
 import Reports from './pages/reports';
@@ -30,7 +30,7 @@ const ProtectedContent = ({ user, onLogout }) => (
 
 const PublicContent = ({ handleLogin }) => (
   <Routes>
-    <Route path="/" element={<LandingPage handleLogin={handleLogin} />} /> 
+    <Route path="/" element={<LandingPage handleLogin={handleLogin} />} />
     <Route path="/callback" element={<Callback />} />
     <Route path="/login" element={<LandingPage handleLogin={handleLogin} />} />
     {/* Redirect any unmatched route to the landing page */}
@@ -42,8 +42,15 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    // Prevent authentication check on public routes where a cookie might not be set yet.
+    if (location.pathname === '/callback' || location.pathname === '/login' || location.pathname === '/') {
+      setLoading(false);
+      return;
+    }
+
     const checkAuth = async () => {
       try {
         const response = await apiClient.get('/api/me');
@@ -51,12 +58,16 @@ function App() {
       } catch (error) {
         console.error("Authentication check failed:", error);
         setUser(null);
+        // Redirect to login only if the user is not on a public route and is not authenticated
+        if (location.pathname !== '/callback' && location.pathname !== '/login' && location.pathname !== '/') {
+            navigate('/login');
+        }
       } finally {
         setLoading(false);
       }
     };
     checkAuth();
-  }, []);
+  }, [location.pathname, navigate]);
 
   const handleLogout = async () => {
     try {
