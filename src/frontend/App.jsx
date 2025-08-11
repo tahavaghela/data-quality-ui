@@ -80,7 +80,11 @@ function App() {
   };
   
   const handleLogin = () => {
-    window.location.href = import.meta.env.VITE_API_BASE_URL + '/api/login';
+    // The Vercel build environment might not have access to import.meta.env
+    // in the same way a local dev server does.
+    // Use a fallback or ensure the variable is defined correctly in Vercel settings.
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    window.location.href = `${apiBaseUrl}/api/login`;
   };
 
   if (loading) {

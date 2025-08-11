@@ -1,6 +1,6 @@
 # main.py
 
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie, Header,Request
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Query, HTTPException, APIRouter, Response, Cookie, Header
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import storage
@@ -98,6 +98,12 @@ if not all([KINDE_DOMAIN, KINDE_CLIENT_ID, KINDE_CLIENT_SECRET, KINDE_REDIRECT_U
 
 engine = create_engine(DATABASE_URL, future=True)
 auth_router = APIRouter()
+
+# In-memory session store to handle OAuth state.
+# This is a robust alternative to using cookies for cross-site state management.
+# WARNING: In a production environment with multiple instances, this should be
+# replaced with a distributed store like Redis, a database, or a dedicated session library.
+session_store = {}
 
 @lru_cache()
 def get_cached_jwks() -> dict:
@@ -242,17 +248,10 @@ async def login(response: Response):
     encoded_params = urllib.parse.urlencode(redirect_params)
     auth_url = f"https://{KINDE_DOMAIN}/oauth2/auth?{encoded_params}"
 
-    # Set oauth_state cookie so we can validate it on callback.
-    # This cookie must survive cross-site redirect from the browser -> Kinde -> back to backend,
-    # so we use Secure + SameSite=None.
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=300
-    )
+    # Store the state in the session store instead of a cookie
+    session_store["oauth_state"] = state
+    logger.info("OAuth state set in session_store: %s", state)
+
     return RedirectResponse(url=auth_url)
 
 @auth_router.get("/callback")
@@ -261,11 +260,17 @@ async def auth_callback(
     code: str,
     state: str,
     request: Request
-    ):
-    oauth_state =  request.cookies.get("oauth_state")
+):
+    # Retrieve the state from the session store instead of a cookie
+    oauth_state = session_store.get("oauth_state")
+
     if not oauth_state or oauth_state != state:
-        logger.error("OAuth state mismatch: cookie=%s, received_url_param=%s", oauth_state, state)
+        logger.error("OAuth state mismatch: session_store=%s, received_url_param=%s", oauth_state, state)
         raise HTTPException(status_code=400, detail="Invalid state parameter or state mismatch.")
+    
+    # Remove the state from the session store after use
+    session_store.pop("oauth_state", None)
+
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
@@ -316,7 +321,7 @@ async def auth_callback(
 
         await run_in_threadpool(upsert_user, payload)
 
-        # Redirect user back to frontend callback route with cookie set.
+        # Redirect user back to frontend dashboard with cookie set.
         response = RedirectResponse(url=frontend_url + "/dashboard")
         # Set access_token cookie with secure cross-site flags so browser will send it from frontend -> backend.
         response.set_cookie(
@@ -327,8 +332,6 @@ async def auth_callback(
             samesite="none",
             max_age=3600
         )
-        # Remove oauth_state cookie (use same flags to ensure cookie is found & removed)
-        response.delete_cookie(key="oauth_state", secure=True, httponly=True, samesite="none")
         return response
 
     except requests.RequestException as e:
